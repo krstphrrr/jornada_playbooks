@@ -1,0 +1,145 @@
+---
+- name: Backup home directories from remote machines
+  hosts: all
+  gather_facts: yes
+  become: yes  
+  vars:
+    local_backup_dir: /dr  # mount on ansible host
+    # destination_backup_dir: /mnt/jornada-nfs
+    ansible_user: elrey
+    ansible_group: elrey  
+  tasks:
+    - name: Ensure local backup directory exists
+      delegate_to: localhost
+      file:
+        path: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0755'
+
+# GATHER SIZE PER DIR
+    - name: Print the size of /home/elrey/ directory
+      command: du -sh /home/elrey/
+      register: du_output
+      become: yes
+
+    - name: Display the size of /home/elrey/ directory
+      debug:
+        msg: "Size of /home/elrey/ on {{ inventory_hostname }}: {{ du_output.stdout }}"
+
+# BRING THE HOME/ELREY
+    - name: Synchronize directory from one place to another
+      synchronize:
+        src: "/home/elrey/"
+        dest: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}"
+        recursive: yes
+        mode: pull
+      become: yes
+
+# ENSURE ELREY OWNS THE CREATED DIR
+    - name: Set ownership and permissions on synchronized directories
+      file:
+        path: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        recurse: yes
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: yes
+
+# CHECK THE EXTRA DIRECTORIES RIGHT AFTER SYNC (BACKUP DIRECTORIES ALREADY CREATED)
+    - name: Check for the existence of directories and files
+      stat:
+        path: "{{ item }}"
+      register: path_check
+      with_items:
+        - /etc/nginx
+        - /etc/ntp.conf
+        - /etc/postfix
+        - /opt/docker
+        - /opt/drupal
+        - /opt/private
+        - /var/www/drupal-7.100
+        - /www/symfony/projects/edit
+
+    - name: Ensure exceptions directory exists
+      delegate_to: localhost
+      file:
+        path: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}/exceptions"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0755'
+      ignore_errors: yes
+
+    - name: Synchronize existing directories and files to local backup directory
+      synchronize:
+        src: "{{ item.item }}"
+        dest: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}/exceptions/{{ item.item | basename }}"
+        recursive: yes
+        mode: pull
+      when: item.stat.exists
+      with_items: "{{ path_check.results }}"
+      become: yes
+      ignore_errors: yes
+
+# CREATE ARRAY OF DIRS IN BACKUPDIR
+    - name: Verify files in local backup directory
+      command: ls -l "{{ local_backup_dir }}"
+      register: ls_output
+      delegate_to: localhost
+      run_once: true
+      ignore_errors: yes
+
+    - name: Display files in local backup directory
+      debug:
+        msg: "Files in {{ local_backup_dir }}: {{ ls_output.stdout }}"
+      run_once: true
+
+    - name: Compress all directories into a single file on the Ansible control node
+      delegate_to: localhost
+      archive:
+        path: "{{ local_backup_dir }}"
+        dest: "{{ local_backup_dir }}/backup.tar.gz"
+        format: gz
+      run_once: true
+      ignore_errors: yes
+
+    - name: Verify backup tar file size
+      command: du -sh "{{ local_backup_dir }}/backup.tar.gz"
+      register: tar_output
+      delegate_to: localhost
+      run_once: true
+
+    - name: Display backup tar file size
+      debug:
+        msg: "Size of backup.tar.gz: {{ tar_output.stdout }}"
+      run_once: true
+
+    - name: List items in local backup directory before cleanup
+      command: ls -1 "{{ local_backup_dir }}"
+      register: items_to_remove
+      delegate_to: localhost
+      run_once: true
+
+    - name: Display items to remove
+      debug:
+        msg: "Items to remove: {{ items_to_remove.stdout_lines }}"
+      run_once: true
+
+    - name: Remove all directories after compression on the Ansible control node
+      delegate_to: localhost
+      file:
+        path: "{{ local_backup_dir }}/{{ item }}"
+        state: absent
+        recurse: yes
+      loop: "{{ items_to_remove.stdout_lines }}"
+      when: item != 'backup.tar.gz'
+      run_once: true
+
+  handlers:
+    - name: "Backup completed"
+      debug:
+        msg: "Backup has been successfully created and compressed on the Ansible control node: {{ local_backup_dir }}/backup.tar.gz"

@@ -1,0 +1,11 @@
+---
+- name: Synchronize directory from one place to another (working home example)
+  hosts: testgroup
+  become: yes
+  tasks:
+    - name: Copy directory from source to destination
+      synchronize:
+        src: "/home/kris/test_dir/"
+        dest: "/home/kris/files/"
+        recursive: yes
+        mode: pull

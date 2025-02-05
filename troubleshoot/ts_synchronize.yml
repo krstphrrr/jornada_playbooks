@@ -1,0 +1,84 @@
+---
+- name: Troubleshoot second synchronize step
+  hosts: testgroup
+  gather_facts: yes
+  become: yes  
+  vars:
+    local_backup_dir: /dr
+    ansible_user: elrey
+    ansible_group: elrey 
+  tasks:
+    - name: Ensure local backup directory exists
+      delegate_to: localhost
+      file:
+        path: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0755'
+      # run_once: true
+
+    - name: Check for the existence of directories and files
+      stat:
+        path: "{{ item }}"
+      register: path_check
+      with_items:
+        - /etc/nginx
+        - /etc/ntp.conf
+        - /etc/postfix
+        # - /home/elrey
+        - /opt/docker
+        - /opt/drupal
+        - /opt/private
+        - /var/www/drupal-7.100
+        - /www/symfony/projects/edit
+
+    - name: List existing directories and files
+      debug:
+        msg: "Existing path: {{ item.item }}"
+      when: item.stat.exists
+      with_items: "{{ path_check.results }}"
+
+    - name: Ensure exceptions directory exists
+      delegate_to: localhost
+      file:
+        path: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}/exceptions"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0755'
+      ignore_errors: yes
+
+    - name: Synchronize existing directories and files to local backup directory
+      synchronize:
+        src: "{{ item.item }}"
+        dest: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}/exceptions/{{ item.item | basename }}"
+        recursive: yes
+        mode: pull
+      when: item.stat.exists
+      with_items: "{{ path_check.results }}"
+      become: yes
+      ignore_errors: yes
+
+    - name: Set ownership and permissions on synchronized directories
+      file:
+        path: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        recurse: yes
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: yes
+
+    - name: Verify files in local backup directory
+      command: ls -l "{{ local_backup_dir }}"
+      register: ls_output
+      delegate_to: localhost
+      run_once: true
+      ignore_errors: yes
+
+    - name: Display files in local backup directory
+      debug:
+        msg: "Files in {{ local_backup_dir }}: {{ ls_output.stdout }}"
+      run_once: true

@@ -1,0 +1,12 @@
+---
+- name: configure sudoers on remote machines only for rsync
+  hosts: testgroup
+  become: yes
+  tasks:
+    - name: Ensure sudoers file for user elrey allows passwordless rsync
+      lineinfile:
+        path: /etc/sudoers.d/elrey
+        state: present
+        create: yes
+        line: "elrey ALL=(ALL) NOPASSWD: /usr/bin/rsync"
+        validate: 'visudo -cf %s'
