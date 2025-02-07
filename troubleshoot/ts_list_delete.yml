@@ -1,0 +1,36 @@
+---
+- name: List and remove directories in local backup directory
+  hosts: localhost
+  become: yes
+  vars:
+    local_backup_dir: /dr  # mount on ansible host
+    # destination_backup_dir: /mnt/jornada-nfs
+    ansible_user: elrey
+    ansible_group: elrey  
+  tasks:
+    - name: List items in local backup directory before cleanup
+      command: ls -1 "{{ local_backup_dir }}"
+      register: items_to_remove
+      ignore_errors: yes
+
+    - name: Display items to remove
+      debug:
+        msg: "Items to remove: {{ items_to_remove.stdout_lines }}"
+
+    - name: Remove all directories in the local backup directory
+      file:
+        path: "{{ local_backup_dir }}/{{ item }}"
+        state: absent
+        # recurse: yes
+      loop: "{{ items_to_remove.stdout_lines }}"
+      when: item | regex_search('.*\.tar\.gz$') is not defined
+      ignore_errors: yes
+
+    - name: List items in local backup directory after cleanup
+      command: ls -1 "{{ local_backup_dir }}"
+      register: items_after_cleanup
+      ignore_errors: yes
+
+    - name: Display items remaining after cleanup
+      debug:
+        msg: "Items remaining: {{ items_after_cleanup.stdout_lines }}"

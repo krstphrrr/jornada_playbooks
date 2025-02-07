@@ -7,7 +7,8 @@
     local_backup_dir: /dr  # mount on ansible host
     # destination_backup_dir: /mnt/jornada-nfs
     ansible_user: elrey
-    ansible_group: elrey  
+    ansible_group: elrey 
+    backup_filename: "backup_{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}.tar.gz"
   tasks:
     - name: Ensure local backup directory exists
       delegate_to: localhost
@@ -74,12 +75,15 @@
         mode: '0755'
       ignore_errors: yes
 
-    - name: Synchronize existing directories and files to local backup directory
+    - name: Synchronize existing directories and files to local backup directory with full path
       synchronize:
         src: "{{ item.item }}"
-        dest: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}/exceptions/{{ item.item | basename }}"
+        dest: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}/exceptions{{ item.item }}"
         recursive: yes
         mode: pull
+        rsync_opts:
+          - "--relative"
+          - "--exclude=/www/symfony/projects/edit/web/uploads" # excluding this folder 
       when: item.stat.exists
       with_items: "{{ path_check.results }}"
       become: yes
@@ -102,44 +106,49 @@
       delegate_to: localhost
       archive:
         path: "{{ local_backup_dir }}"
-        dest: "{{ local_backup_dir }}/backup.tar.gz"
+        dest: "{{ local_backup_dir }}/{{ backup_filename }}"
         format: gz
       run_once: true
       ignore_errors: yes
 
     - name: Verify backup tar file size
-      command: du -sh "{{ local_backup_dir }}/backup.tar.gz"
+      command: du -sh "{{ local_backup_dir }}/{{ backup_filename }}"
       register: tar_output
       delegate_to: localhost
       run_once: true
 
     - name: Display backup tar file size
       debug:
-        msg: "Size of backup.tar.gz: {{ tar_output.stdout }}"
+        msg: "Size of {{ backup_filename }}: {{ tar_output.stdout }}"
       run_once: true
-
+# DELETE DIRS IN BACKUPDIR
     - name: List items in local backup directory before cleanup
       command: ls -1 "{{ local_backup_dir }}"
       register: items_to_remove
       delegate_to: localhost
       run_once: true
+      ignore_errors: yes
 
     - name: Display items to remove
       debug:
         msg: "Items to remove: {{ items_to_remove.stdout_lines }}"
-      run_once: true
 
-    - name: Remove all directories after compression on the Ansible control node
-      delegate_to: localhost
+    - name: Remove all directories in the local backup directory
       file:
         path: "{{ local_backup_dir }}/{{ item }}"
         state: absent
-        recurse: yes
+        # recurse: yes
       loop: "{{ items_to_remove.stdout_lines }}"
-      when: item != 'backup.tar.gz'
+      when: item | regex_search('.*\.tar\.gz$') is not defined
+      delegate_to: localhost
       run_once: true
+      ignore_errors: yes
 
-  handlers:
-    - name: "Backup completed"
+    - name: List items in local backup directory after cleanup
+      command: ls -1 "{{ local_backup_dir }}"
+      register: items_after_cleanup
+      ignore_errors: yes
+
+    - name: Display items remaining after cleanup
       debug:
-        msg: "Backup has been successfully created and compressed on the Ansible control node: {{ local_backup_dir }}/backup.tar.gz"
+        msg: "Items remaining: {{ items_after_cleanup.stdout_lines }}"
