@@ -4,9 +4,6 @@
   become: yes
   vars:
     local_backup_dir: /dr  # mount on ansible host
-    # destination_backup_dir: /mnt/jornada-nfs
-    ansible_user: elrey
-    ansible_group: elrey  
   tasks:
     - name: List items in local backup directory before cleanup
       command: ls -1 "{{ local_backup_dir }}"
@@ -23,7 +20,7 @@
         state: absent
         # recurse: yes
       loop: "{{ items_to_remove.stdout_lines }}"
-      when: item | regex_search('.*\.tar\.gz$') is not defined
+      when: not item | regex_search('.*\.tar\.gz$')
       ignore_errors: yes
 
     - name: List items in local backup directory after cleanup

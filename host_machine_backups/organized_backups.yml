@@ -64,7 +64,7 @@
         - /opt/private
         - /var/www/drupal-7.100
         - /www/symfony/projects/edit
-
+# DOES EXCEPTIONS DIR EXIST
     - name: Ensure exceptions directory exists
       delegate_to: localhost
       file:
@@ -73,6 +73,18 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_group }}"
         mode: '0755'
+      ignore_errors: yes
+# DO THE FULL PATH INSIDE THE EXCEPTIONS DIR EXIST
+    - name: Ensure full path for exceptions exists
+      delegate_to: localhost
+      file:
+        path: "{{ local_backup_dir }}/{{ inventory_hostname | replace('.', '-') }}_{{ ansible_hostname }}/exceptions{{ item.item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0755'
+      when: item.stat.exists
+      with_items: "{{ path_check.results }}"
       ignore_errors: yes
 
     - name: Synchronize existing directories and files to local backup directory with full path
@@ -139,9 +151,7 @@
         state: absent
         # recurse: yes
       loop: "{{ items_to_remove.stdout_lines }}"
-      when: item | regex_search('.*\.tar\.gz$') is not defined
-      delegate_to: localhost
-      run_once: true
+      when: not item | regex_search('.*\.tar\.gz$')
       ignore_errors: yes
 
     - name: List items in local backup directory after cleanup

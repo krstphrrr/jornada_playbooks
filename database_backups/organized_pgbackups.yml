@@ -1,0 +1,60 @@
+---
+- name: Backup PostgreSQL schema and compress the resulting directory
+  hosts: target_host
+  become: yes
+  vars:
+    schema_name: "{{ schema_name }}" # supplied through shell
+    backup_script_path: "/dump_schema.sh"
+    backup_dir_base: "{{ backup_dir_base }}" # supplied through shell
+  tasks:
+    - name: Ensure the backup directory exists
+      file:
+        path: "{{ backup_dir_base }}"
+        state: directory
+        mode: '0755'
+
+    - name: Run the dump_schema.sh script
+      command: "{{ backup_script_path }} {{ schema_name }}"
+      args:
+        chdir: "{{ backup_dir_base }}"
+      environment:
+        DB_USER: "{{ lookup('env', 'DB_USER') }}"
+        DB_HOST: "{{ lookup('env', 'DB_HOST') }}"
+        DB_PORT: "{{ lookup('env', 'DB_PORT') }}"
+        DB_NAME: "{{ lookup('env', 'DB_NAME') }}"
+        DB_PASSWORD: "{{ lookup('env', 'DB_PASSWORD') }}"
+      register: dump_output
+
+    - name: Fail if the dump script failed
+      fail:
+        msg: "The dump_schema.sh script failed."
+      when: dump_output.rc != 0
+
+    - name: Find the backup directory created by the script
+      find:
+        paths: "{{ backup_dir_base }}"
+        patterns: "{{ schema_name }}_backup_*"
+        file_type: directory
+        recurse: no
+      register: backup_dirs
+
+    - name: Compress the backup directory
+      archive:
+        path: "{{ item.path }}"
+        dest: "{{ item.path }}.tar.gz"
+        format: gz
+      with_items: "{{ backup_dirs.files }}"
+      when: backup_dirs.matched > 0
+
+    - name: Display the path of the compressed backup file
+      debug:
+        msg: "Compressed backup file created at: {{ item.path }}.tar.gz"
+      with_items: "{{ backup_dirs.files }}"
+      when: backup_dirs.matched > 0
+
+    - name: Delete the backup directory after compression
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ backup_dirs.files }}"
+      when: backup_dirs.matched > 0 and not item.path | regex_search('.*\.tar\.gz$')

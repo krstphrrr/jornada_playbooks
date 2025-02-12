@@ -1,13 +1,5 @@
-## quick save
+## Ansible playbooks to automate tasks
 
-### set vars: 
-- within the yml itself, on the vars block
-
-### configure inventory: 
-```ini
-[all]
-
-192.168.1.10
-192.168.1.11
-192.168.1.12
-```
+- [Database Backups](./database_backups/README.md)
+- [Host machine backups](./host_machine_backups/README.md)
+  - [CentOS specific playbooks](./host_machine_backups/centos/)
