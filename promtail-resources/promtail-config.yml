@@ -1,0 +1,44 @@
+# example of promtail config file that listens to both docker services and nondocker services
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://remotelokihost:3100/loki/api/v1/push # loki listener url
+
+scrape_configs:
+# Add docker services like so:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        target_label: container
+      - source_labels: [__meta_docker_container_label_com_docker_swarm_service_name]
+        target_label: service
+# Add services that are not docker like so: 
+# job # 1 
+  - job_name: edit-httpd-logs # job name
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: edit-error-log # job 1-1
+        __path__: /var/log/httpd/edit-ssl_error_log
+
+    - targets:
+        - localhost
+      labels:
+        job: edit-access-log # job 1-2
+        __path__: /var/log/httpd/edit-ssl_access_log
+# job 2 
+  - job_name: edit-symfony-logs
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: symfony-prod-log
+        __path__: /www/symfony/projects/edit/var/logs/prod.log

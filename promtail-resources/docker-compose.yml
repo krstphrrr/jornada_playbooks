@@ -1,0 +1,17 @@
+services:
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: promtail
+    restart: always
+    # log rotation for docker stack
+    logging:
+      driver: "json-file"
+      options:
+        max-file: 3
+        max-size: 10m
+
+    volumes:
+      - /etc/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml
+      # - /add/log/paths/here:/var/log
+      - /var/run/docker.sock:/var/run/docker.sock # listens to itself and streams to loki
+    command: -config.file=/etc/promtail/promtail-config.yml

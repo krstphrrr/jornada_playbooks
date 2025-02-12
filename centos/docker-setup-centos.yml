@@ -1,0 +1,40 @@
+- hosts: singularpromtail
+  become: true
+  tasks:
+
+  - name: Creates keyrings dir
+    become: true
+    ansible.builtin.file:
+      path: /etc/pki/rpm-gpg
+      state: directory
+
+  - name: "install :: adds docker gpg key"
+    become: true
+    ansible.builtin.get_url:
+      url: "https://download.docker.com/linux/centos/gpg"
+      dest: /etc/pki/rpm-gpg/docker.asc
+
+  - name: "install :: adds the official Docker repository"
+    become: true
+    ansible.builtin.yum_repository:
+      name: docker
+      description: Docker Repository
+      baseurl: "https://download.docker.com/linux/centos/7/x86_64/stable"
+      gpgcheck: yes
+      gpgkey: file:///etc/pki/rpm-gpg/docker.asc
+      enabled: yes
+
+  - name: "install :: updates package lists"
+    become: true
+    ansible.builtin.yum:
+      name: '*'
+      state: latest
+
+  - name: "install :: installs the docker packages"
+    become: true
+    ansible.builtin.yum:
+      name:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+      state: present
