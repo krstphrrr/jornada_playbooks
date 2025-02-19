@@ -1,0 +1,44 @@
+
+
+# This is a complete configuration to deploy Loki backed by the filesystem.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 4096
+
+
+frontend:
+    address: 127.0.0.1
+    max_outstanding_per_tenant: 4096
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /tmp/loki
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: tsdb
+    object_store: filesystem
+    schema: v13
+    index:
+      prefix: index_
+      period: 24h
+
+storage_config:
+  filesystem:
+    directory: /tmp/loki/chunks
+
+# increased limits for the nginx logs
+limits_config:
+  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: 20
+  max_streams_per_user: 1000
