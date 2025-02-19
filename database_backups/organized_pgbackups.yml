@@ -4,13 +4,26 @@
   become: yes
   vars:
     schema_name: "{{ schema_name }}" # supplied through shell
-    backup_script_path: "/dump_schema.sh"
     backup_dir_base: "{{ backup_dir_base }}" # supplied through shell
+    backup_script_path: "{{backup_dir_base}}/dump_schema.sh"  # remote path
+    local_script_path: "/dr/db-backups/dump_schema.sh"  # local path on ansible host
+    local_backup_dir: "/dr/db-backups/{{ schema_name }}"
+    ansible_user: elrey
+    ansible_group: elrey
   tasks:
     - name: Ensure the backup directory exists
       file:
         path: "{{ backup_dir_base }}"
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
+        mode: '0755'
+    - name: Copy backup script to remote host
+      copy:
+        src: "{{ local_script_path }}"
+        dest: "{{ backup_script_path }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_group }}"
         mode: '0755'
 
     - name: Run the dump_schema.sh script
@@ -58,3 +71,16 @@
         state: absent
       with_items: "{{ backup_dirs.files }}"
       when: backup_dirs.matched > 0 and not item.path | regex_search('.*\.tar\.gz$')
+    
+    - name: Fetch the compressed backup file to Ansible control node
+      fetch:
+        src: "{{ item.path }}.tar.gz"
+        dest: "{{ local_backup_dir }}/"
+        flat: yes
+      with_items: "{{ backup_dirs.files }}"
+      when: backup_dirs.matched > 0
+
+    - name: Display the local backup path
+      debug:
+        msg: "Backup file copied to Ansible control node at: {{ local_backup_dir }}"
+      when: backup_dirs.matched > 0
