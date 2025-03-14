@@ -1,0 +1,37 @@
+- name: Setup Additional Nginx Instances
+  hosts: nginx_nodes
+  become: true
+  tasks:
+
+    - name: Install Nginx if not present
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Ensure Nginx service is enabled and running
+      systemd:
+        name: nginx
+        enabled: yes
+        state: started
+
+    - name: Sync Nginx configurations from main server
+      synchronize:
+        src: /etc/nginx/
+        dest: /etc/nginx/
+        rsync_opts:
+          - "--delete"
+      delegate_to: 192.168.177.153  # The main nginx machine
+
+    - name: Sync SSL certificates from main server
+      synchronize:
+        src: /etc/letsencrypt/
+        dest: /etc/letsencrypt/
+        rsync_opts:
+          - "--delete"
+      delegate_to: 192.168.177.153
+
+    - name: Restart Nginx to apply changes
+      systemd:
+        name: nginx
+        state: restarted
